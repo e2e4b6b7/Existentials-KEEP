@@ -1,6 +1,6 @@
 # Kotlin existential types proposal
 
-## Useful ources
+## Useful sources
 
 * Formalization of Java wildcards using existential types:
   [small](https://ecs.wgtn.ac.nz/foswiki/pub/Main/TechnicalReportSeries/ECSTR09-04.pdf),
@@ -64,6 +64,10 @@ that has any projection as the direct type parameter.
 
 * If a type of the value is declared with the same projection as the value, 
   it should not be instantiated to the skolem type as it may be expressed with common types.
+
+TODO: Scope?
+
+TODO: why skolems? Implicit existential works?
 
 
 ## Backward compatibility
