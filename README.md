@@ -2,7 +2,7 @@
 
 ## Useful sources
 
-* Why existentials were removed in Scala 3: [GH issue](https://github.com/lampepfl/dotty/issues/4353)
+* Why existential types were removed in Scala 3: [GH issue](https://github.com/lampepfl/dotty/issues/4353)
 
 * Formalization of Java wildcards using existential types:
   [small](https://ecs.wgtn.ac.nz/foswiki/pub/Main/TechnicalReportSeries/ECSTR09-04.pdf),
@@ -14,13 +14,13 @@
 The main advantages of the skolem types instead of unidentified projections are:
 
 * More expressive type-safe code without an explicit generics' introduction.
-  For example, we would be possible to express AVL-tree with type-level control of branches balance 
+  For example, we would be possible to express AVL-tree with type-level control of branches balance
   using this feature (with addition to GADT feature).
 
 * More straightforward and precise implementation of bare types feature.
   With this feature,
   bare types may be expressed just like a syntax sugar over instantiation of all parameters with star-projection.
-  As the projections became a skolem variable, 
+  As the projections became a skolem variable,
   it will be possible to track bounds from all sources in a more precise, stable and predictable way.
 
 * Less error-prone type system.
@@ -35,7 +35,7 @@ Implementation will be mostly invisible to the user. Exceptions:
 * Error messages. It is quite hard and important to properly express type errors related to the skolem types.
   Possibly, we could do it in the same way as Scala.
 
-* Possibly we could later add an ability to give a name for the unknown generic parameter with underlying existential type for the code like this:
+* Possibly we could later add an ability to give a name for the unknown generic parameter with an underlying existential type for the code like this:
   ```kotlin
   val lst: MutableList<t> = foo()
   val fst: t = lst.first()
@@ -46,10 +46,12 @@ Implementation will be mostly invisible to the user. Exceptions:
 
 ### Scala reference
 
-In Scala, they are saying that it is implemented using path-dependent typing. 
+TODO: Remove this section
+
+In Scala, they are saying that it is implemented using path-dependent typing.
 I do not see any reasons to do it in such a way (Except clarity in error messages).
 AFAIK path is just a debug reference on the place where the skolem were bound.
-It is not even used as ID as they are comparing skolems by reference.
+It is not even used as ID as they are comparing skolem types by reference.
 
 But generally, the behaviour of the features could be the same as in Scala.
 
@@ -61,30 +63,30 @@ Let's review the moments of packing and unpacking that are used for now.
 
 Currently, projections in the type of value are captured in the places of referencing this value.
 For example, if we have function call, receiver and arguments will be captured.
-But as capturing is performed in each referencing independently, 
+But as capturing is performed in each referencing independently,
 the resulting captured types of single immutable value will not be equal.
-It leads to overly restrictive typing in several cases: 
+It leads to overly restrictive typing in several cases:
 
 ```kotlin
 fun <T> shuffle(f: MutableList<T>, s: MutableList<T>)
 
 fun foo() {
-    val l: MutableList<*>
-    shuffle(l, l) // Argument type mismatch: actual type is 'kotlin.collections.MutableList<CapturedType(*)>', but 'kotlin.collections.MutableList<T>' was expected.
+  val l: MutableList<*>
+  shuffle(l, l) // Argument type mismatch: actual type is 'kotlin.collections.MutableList<CapturedType(*)>', but 'kotlin.collections.MutableList<T>' was expected.
 }
 ```
 
-or 
+or
 
 ```kotlin
 fun foo() {
-    val l: MutableList<*>
-    l.add(l.first())
+  val l: MutableList<*>
+  l.add(l.first())
 }
 ```
 
 And in case of the return value with a captured type, it will be approximated.
-If a captured type remains to be a type parameter of the top-level type, 
+If a captured type remains to be a type parameter of the top-level type,
 it will be generalized (`List<X> -> \exists T. List<T>`) (preserving constraints).
 If a captured type became the top-level type, it will be approximated with its upper bounds.
 So, there are no unpacked existential type variables anywhere except the scope of each single function call.
@@ -92,7 +94,7 @@ So, there are no unpacked existential type variables anywhere except the scope o
 ### Proposed state
 
 We propose to not approximate or generalize return types and allow captured types to be a valid type.
-To achieve this, we should introduce a new existential type when we receive a value (even temporary one) 
+To achieve this, we should introduce a new existential type when we receive a value (even temporary one)
 that has any projection as the direct type parameter.
 
 * If projection is not a direct type parameter, it has not to be instantiated into a skolem.
@@ -105,15 +107,18 @@ that has any projection as the direct type parameter.
   it should not be instantiated to the existential type variable as it may be expressed with common types.
 
 TO DISCUSS: (Why not implicit packing-unpacking)
-To be precise, we should consider this not as introduction of a new existential type, 
+To be precise, we should consider this not as introduction of a new existential type,
 but rather a first occurrence of the skolem variable.
 This is because we should skolemize all of them for the easier inference.
 Thus, the scope of existential variables is the whole function.
 
-#### Mutable variables
+## Issues
+
+### Different types of mutable variables with projections
 
 There may be two different types of mutable variables.
-The one which is actually the variable of the existential pair and it changes the value of their type on each reassignment:
+The one that is actually the variable of the existential pair,
+and it changes the value of their type on each reassignment (`var v: exists T. Box<T>`).
 
 ```kotlin
 fun sameBoxes(b1: Box<T>, b2: Box<T>)
@@ -124,19 +129,22 @@ fun foo(l: List<Box<*>>) {
     for (el in l) {
         // el is actually a dependant pair.
         // In case of full-fledged existential types, we will reassign the type in the currentBox variable on each iteration.
-        // In case of skolemized existentials, we are able to express it using another skolem variable (not from any of the boxes) 
-        // which will be a supertype of variables from all the boxes
+        // In case of skolem types, we are able to express it using star projection
+        // which will be a supertype of all the boxes with any specific skolem type.
         currentBox = el
+      
+        // TO DISCUSS:
         // succeeds for full-fledged existential types?
         // fails for skolemized existential types
         sameBoxes(currentBox, el)
     }
+  
     // fails
     sameBoxes(currentBox, fst)
 }
 ```
 
-The others do not repack their existential variables:
+The others do not repack their existential variables (`exists T. var v: Box<T>`):
 
 ```kotlin
 fun sameBoxes(b1: Box<T>, b2: Box<T>)
@@ -149,24 +157,88 @@ fun foo(l: List<Box<*>>) {
     if (cond) {
         b = transform(b)
     }
+    
     // succeeds
-    sameBoxes(b, fst) 
+    sameBoxes(b, fst)
+    
+    for (el in l) {
+        // fails
+        b = el
+    }
 }
 ```
 
-##### New denotable type
+As both of them allow some code not allowed by the other one, we should allow both of them.
+
+At first sight, the type with the skolem inferred from the first assignment is more precise.
+But it will break some existing code as currently it behaves like the `var v: exists T. Box<T>`.
+Consequently, we have to treat such variables (with and without explicit type annotation) this way.
+
+Then the question is how to express the type of the variable that is not repacking its existential type.
+
+The simplest solution is not to provide a possibility to express variables with such a type.
+But it may be useful in some cases as it allows some additional behaviour.
+For example:
+
+```kotlin
+TODO()
+```
+
+The first way to resolve it is
+to allow explicitly specify the second type for some parameters of mutable variable's type.
+Currently, Kotlin has only projection types to express existential types
+that in context of mutable variables transform into `var v: exists T. Box<T>`, 
+thus we have to introduce a new syntax for this case.
+
+* For example, it may be `List<_>` or `List<?>`.
+  Such a syntax will mean
+  that we would like to use some skolem there that should be inferred from the initializing expression.
+* The other option is if we introduce a syntax for the denotable existential type.
+  For example, `List<t>` will mean that we would like to give a name for the skolem that will be used there.
+  And this name could be used anywhere in the same way as the function's generic type parameter.
+  In this case, programmer can just give a new fresh name instead of the underscore.
+  But it will be more verbose and less clear
+  and should be considered only
+  if we would not like to introduce a new syntax for another type of unknown type parameter.
+
+The other way is to try to infer the type of the variable from the usage.
+We may use the flexible type `{List<*>, List<s1>}`, 
+where the upper bound is the type as for star projection (`var v: exists T. Box<T>`), 
+while the lower bound is the type with the existential type inferred from the first assignment 
+(`exists T. var v: Box<t>`).
+But this solution may lead to some problems with the inference
+as it introduces a new class of flexible types which is not easy to handle,
+fragile and not as useful as it is hard to support.
+
+#### Immutable variables
+
+This issue does not apply to the immutable variables.
+As we are not able to reassign them, we may safely infer the most precise type for them.
+In their types, we should replace all projections as the first level type parameters with the existential types.
+Because such types will remain a subtype of the type with projections, it will not break any existing code.
+
+### Non-local variables
+
+The other issue is to track existential types in the non-local values and variables.
+At first sight, we access them through the getter and setter functions.
+As the other functions, they have to consume and return types with projections.
+(Intuitively, this is because they are the values of type `Function<...>`, thus all projections are not first-level)
+But programmer may want to use them as the values with the existential type parameters.
+
+In this context, there are several issues:
+
+* How to handle existential types with such scopes (class and global cases)?
+* How to express the type of the non-local value with the existential type parameter?
+* When are we able to use the existential type parameter implicitly?
+
+TODO
+
+### Tracking of the origin of the existential type
 
 TODO:
-If we would like to differentiate this cases we may introduce a new syntax (f.e. `List<_>`) 
-that will mean that we would like to use a skolem there but everywhere the same as in the first assignment.
+We have to track the origin of the existential type to be able to give a proper error message.
 
-#### Non-local values
-
-TODO: Options: 
-* capture the skolem globally and use it everywhere without an explicit copy to the local variable. (result value may be more precise)
-* implicitly transform or explicitly ask a programmer to assign this value to the local variable.
-
-#### Scoped skolems
+### Scopes
 
 TODO:
 We have to care about scopes of the skolems as in this code:
@@ -181,43 +253,21 @@ fun foo(l: List<Box<*>>) {
 }
 ```
 
-### Bounds tracking
+## Interactions with other features
+
+### GADT
 
 TODO:
 We may infer local bounds in the same way as for GADT + generics, the mapping from variable to the inferred bounds.
 
-## Backward compatibility
+### Bare types
 
-### More precision
+TODO:
+Using existential types + GADT inference, 
+we are able to express bare types as a syntax sugar over instantiation of all parameters with star-projection.
 
-TODO: merge with 'Mutable variables' section
+### Builder inference
 
-For mutable variables, it is possible to infer a more precise type using skolem type. 
-This may lead to type errors in the code where more general types were implicitly supposed to be.
-For example:
-
-```kotlin
-fun minOrDefault(list: List<Box<*>>, default: Box<*>): Box<*> {
-  // Here types are:  
-  // list: List<Box<s1>>
-  // default: Box<s2>
-  // s1, s2 are different skolem types  
-  var min = list.first()
-  // before: min: Box<*> == \exists T. Box<T>
-  // after:  min: Box<s1>
-  for (elem in list) {
-      if (elem.ord() < min.ord()) {
-          min = elem
-      }
-  }
-  if (min.ord() > default.ord()) {
-      min = default // after: type error: s1 != s2
-  }
-  return min
-}
-```
-
-Possible solutions: 
-
-* Deskolemize variables to type them as before. 
-* Use a flexible type to postpone choice between those types.
+TODO: 
+Care about the scope of the existential types.
+But is not it the same as for the generic types?
